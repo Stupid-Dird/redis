@@ -68,23 +68,32 @@ int zslLexValueLteMax(sds value, zlexrangespec *spec);
 
 /* Create a skiplist node with the specified number of levels.
  * The SDS string 'ele' is referenced by the node after the call. */
+//创建指定层级的sln节点,level表示节点层级，score为元素分数，ele为元素
 zskiplistNode *zslCreateNode(int level, double score, sds ele) {
+    //创建指定层级的zln节点
     zskiplistNode *zn =
         zmalloc(sizeof(*zn)+level*sizeof(struct zskiplistLevel));
+    //设置分数
     zn->score = score;
+    //设置元素
     zn->ele = ele;
     return zn;
 }
 
 /* Create a new skiplist. */
+//创建sl，并创建一个哨兵节点，TODO
 zskiplist *zslCreate(void) {
     int j;
     zskiplist *zsl;
-
+    //创建一个sl
     zsl = zmalloc(sizeof(*zsl));
+    //设置sl的层级
     zsl->level = 1;
+    //设置元素个数
     zsl->length = 0;
+    //创建一个头节点，作为哨兵节点
     zsl->header = zslCreateNode(ZSKIPLIST_MAXLEVEL,0,NULL);
+    //初始化头节点的每一层
     for (j = 0; j < ZSKIPLIST_MAXLEVEL; j++) {
         zsl->header->level[j].forward = NULL;
         zsl->header->level[j].span = 0;
@@ -97,21 +106,27 @@ zskiplist *zslCreate(void) {
 /* Free the specified skiplist node. The referenced SDS string representation
  * of the element is freed too, unless node->ele is set to NULL before calling
  * this function. */
+//释放一个sln节点
 void zslFreeNode(zskiplistNode *node) {
     sdsfree(node->ele);
     zfree(node);
 }
 
 /* Free a whole skiplist. */
+//释放sl,从头结点开始释放每个节点
 void zslFree(zskiplist *zsl) {
+    //获取到头的下一个节点
     zskiplistNode *node = zsl->header->level[0].forward, *next;
-
+    //释放头结点
     zfree(zsl->header);
+    //从第二个节点开始遍历
     while(node) {
         next = node->level[0].forward;
+        //释放遍历中的节点
         zslFreeNode(node);
         node = next;
     }
+    //释放sl
     zfree(zsl);
 }
 
@@ -119,6 +134,9 @@ void zslFree(zskiplist *zsl) {
  * The return value of this function is between 1 and ZSKIPLIST_MAXLEVEL
  * (both inclusive), with a powerlaw-alike distribution where higher
  * levels are less likely to be returned. */
+//返回我们将要创建的新skiplist节点的随机级别
+// 此函数的返回值介于1和ZSKIPLIST_MAXLEVEL之间（两者均包含），
+// 具有类似幂律的分布，其中返回更高级别的可能性较小。
 int zslRandomLevel(void) {
     int level = 1;
     while ((random()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
@@ -129,24 +147,32 @@ int zslRandomLevel(void) {
 /* Insert a new node in the skiplist. Assumes the element does not already
  * exist (up to the caller to enforce that). The skiplist takes ownership
  * of the passed SDS string 'ele'. */
+//插入一个新的sln节点
 zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     unsigned long rank[ZSKIPLIST_MAXLEVEL];
     int i, level;
 
     serverAssert(!isnan(score));
+    //获取到头节点
     x = zsl->header;
+    //层的遍历，从最高层开始，往下层降低
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
+        //存储找到插入位置的每层的层高
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
+        //遍历比较这一层的元素，比较score和ele，找到刚好大于score或者score相同大于ele的层节点
         while (x->level[i].forward &&
                 (x->level[i].forward->score < score ||
                     (x->level[i].forward->score == score &&
                     sdscmp(x->level[i].forward->ele,ele) < 0)))
         {
+            //计算每一层相同层寻找过程中的跨度
             rank[i] += x->level[i].span;
+            //指向相同层的下一个元素
             x = x->level[i].forward;
         }
+        //存储每一层刚好大于score或者ele的层节点
         update[i] = x;
     }
     /* we assume the element is not already inside, since we allow duplicated

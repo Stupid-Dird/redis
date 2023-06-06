@@ -239,6 +239,7 @@ int lpStringToInt64(const char *s, unsigned long slen, int64_t *value) {
  * Pre-allocate at least `capacity` bytes of memory,
  * over-allocated memory can be shrunk by `lpShrinkToFit`.
  * */
+//创建一个空的listpack
 unsigned char *lpNew(size_t capacity) {
     unsigned char *lp = lp_malloc(capacity > LP_HDR_SIZE+1 ? capacity : LP_HDR_SIZE+1);
     if (lp == NULL) return NULL;
@@ -461,6 +462,7 @@ static inline uint32_t lpCurrentEncodedSizeBytes(unsigned char *p) {
  * function if the current element is the EOF element at the end of the
  * listpack, however, while this function is used to implement lpNext(),
  * it does not return NULL when the EOF element is encountered. */
+//跳过当前p，也就是p的下一个元素，当遇到EOF不会返回NULL
 unsigned char *lpSkip(unsigned char *p) {
     unsigned long entrylen = lpCurrentEncodedSizeUnsafe(p);
     entrylen += lpEncodeBacklen(NULL,entrylen);
@@ -471,6 +473,7 @@ unsigned char *lpSkip(unsigned char *p) {
 /* If 'p' points to an element of the listpack, calling lpNext() will return
  * the pointer to the next element (the one on the right), or NULL if 'p'
  * already pointed to the last element of the listpack. */
+//如果“p”指向listpack的某个元素，则调用lpNext（）将返回指向下一个元素（右边的元素）的指针，如果“p”已指向listpack的最后一个元素，则返回NULL。
 unsigned char *lpNext(unsigned char *lp, unsigned char *p) {
     assert(p);
     p = lpSkip(p);
@@ -482,6 +485,7 @@ unsigned char *lpNext(unsigned char *lp, unsigned char *p) {
 /* If 'p' points to an element of the listpack, calling lpPrev() will return
  * the pointer to the previous element (the one on the left), or NULL if 'p'
  * already pointed to the first element of the listpack. */
+//如果“p”指向listpack的某个元素，则调用lpPrev（）将返回指向上一个元素（左侧元素）的指针，如果“p”已指向listpack的第一个元素，则返回NULL。
 unsigned char *lpPrev(unsigned char *lp, unsigned char *p) {
     assert(p);
     if (p-lp == LP_HDR_SIZE) return NULL;
@@ -495,9 +499,11 @@ unsigned char *lpPrev(unsigned char *lp, unsigned char *p) {
 
 /* Return a pointer to the first element of the listpack, or NULL if the
  * listpack has no elements. */
+//返回指向listpack的第一个元素的指针，如果listpack没有元素，则返回NULL。
 unsigned char *lpFirst(unsigned char *lp) {
     unsigned char *p = lp + LP_HDR_SIZE; /* Skip the header. */
     if (p[0] == LP_EOF) return NULL;
+    //断言是有效元素
     lpAssertValidEntry(lp, lpBytes(lp), p);
     return p;
 }
@@ -514,6 +520,7 @@ unsigned char *lpLast(unsigned char *lp) {
  * needed. As a side effect of calling this function, the listpack header
  * could be modified, because if the count is found to be already within
  * the 'numele' header field range, the new value is set. */
+//计算listpack的元素个数，如果元素过多会遍历计算
 unsigned long lpLength(unsigned char *lp) {
     uint32_t numele = lpGetNumElements(lp);
     if (numele != LP_HDR_NUMELE_UNKNOWN) return numele;
@@ -670,6 +677,7 @@ unsigned char *lpGet(unsigned char *p, int64_t *count, unsigned char *intbuf) {
  * Otherwise if the element is encoded as a string a pointer to the string (pointing
  * inside the listpack itself) is returned, and 'slen' is set to the length of the
  * string. */
+//获取p指向的元素的元素值，如果为元素为字符串，slen则存储获取到的字符串长度,返回的也是字符串指针，如果是整型，lval则存储整型值
 unsigned char *lpGetValue(unsigned char *p, unsigned int *slen, long long *lval) {
     unsigned char *vstr;
     int64_t ele_len;
@@ -779,9 +787,15 @@ unsigned char *lpFind(unsigned char *lp, unsigned char *p, unsigned char *s,
  * For deletion operations (both 'elestr' and 'eleint' set to NULL) 'newp' is
  * set to the next element, on the right of the deleted one, or to NULL if the
  * deleted element was the last one. */
+//lp表示表示ziplist的数据区域
+//elestr表示插入的元素的数据区域
+//size表示插入数据的长度
+//p表示插入的位置
+//where表示追加到p后面还是前面，0表示前面，1表示在后面，2表示替换
 unsigned char *lpInsert(unsigned char *lp, unsigned char *elestr, unsigned char *eleint,
                         uint32_t size, unsigned char *p, int where, unsigned char **newp)
 {
+    //
     unsigned char intenc[LP_MAX_INT_ENCODING_LEN];
     unsigned char backlen[LP_MAX_BACKLEN_SIZE];
 
@@ -928,6 +942,7 @@ unsigned char *lpInsert(unsigned char *lp, unsigned char *elestr, unsigned char 
 }
 
 /* This is just a wrapper for lpInsert() to directly use a string. */
+//等于lpInsert，插入到p附近，where决定方向
 unsigned char *lpInsertString(unsigned char *lp, unsigned char *s, uint32_t slen,
                               unsigned char *p, int where, unsigned char **newp)
 {
@@ -945,8 +960,11 @@ unsigned char *lpInsertInteger(unsigned char *lp, long long lval, unsigned char 
 }
 
 /* Append the specified element 's' of length 'slen' at the head of the listpack. */
+//将长度为“slen”的指定元素“s”附加到列表包的头部。
 unsigned char *lpPrepend(unsigned char *lp, unsigned char *s, uint32_t slen) {
+    //获取头节点
     unsigned char *p = lpFirst(lp);
+    //如果不存在头，则追加到末尾，
     if (!p) return lpAppend(lp, s, slen);
     return lpInsert(lp, s, NULL, slen, p, LP_BEFORE, NULL);
 }
@@ -961,6 +979,7 @@ unsigned char *lpPrependInteger(unsigned char *lp, long long lval) {
 /* Append the specified element 'ele' of length 'len' at the end of the
  * listpack. It is implemented in terms of lpInsert(), so the return value is
  * the same as lpInsert(). */
+//将ele插入到listpack的eof结束符之前
 unsigned char *lpAppend(unsigned char *lp, unsigned char *ele, uint32_t size) {
     uint64_t listpack_bytes = lpGetTotalBytes(lp);
     unsigned char *eofptr = lp + listpack_bytes - 1;
@@ -977,6 +996,7 @@ unsigned char *lpAppendInteger(unsigned char *lp, long long lval) {
 /* This is just a wrapper for lpInsert() to directly use a string to replace
  * the current element. The function returns the new listpack as return
  * value, and also updates the current cursor by updating '*p'. */
+//lp是listpack，p是原数据指针，s是代替的数据指针，slen是s的长度
 unsigned char *lpReplace(unsigned char *lp, unsigned char **p, unsigned char *s, uint32_t slen) {
     return lpInsert(lp, s, NULL, slen, *p, LP_REPLACE, p);
 }
@@ -993,6 +1013,7 @@ unsigned char *lpReplaceInteger(unsigned char *lp, unsigned char **p, long long 
  * If 'newp' is not NULL, the next element pointer (to the right of the
  * deleted one) is returned by reference. If the deleted element was the
  * last one, '*newp' is set to NULL. */
+//删除“p”所指的元素，并返回生成的listpack。如果“newp”不为NULL，则通过引用返回下一个元素指针（指向已删除元素指针的右侧）。如果删除的元素是最后一个，“newp”设置为NULL。
 unsigned char *lpDelete(unsigned char *lp, unsigned char *p, unsigned char **newp) {
     return lpInsert(lp,NULL,NULL,0,p,LP_REPLACE,newp);
 }
@@ -1037,6 +1058,7 @@ unsigned char *lpDeleteRangeWithEntry(unsigned char *lp, unsigned char **p, unsi
 }
 
 /* Delete a range of entries from the listpack. */
+//从lp中删除从index开始的num条元素
 unsigned char *lpDeleteRange(unsigned char *lp, long index, unsigned long num) {
     unsigned char *p;
     uint32_t numele = lpGetNumElements(lp);
@@ -1079,6 +1101,15 @@ unsigned char *lpDeleteRange(unsigned char *lp, long index, unsigned long num) {
  * On success: returns the merged listpack (which is expanded version of either
  * 'first' or 'second', also frees the other unused input listpack, and sets the
  * input listpack argument equal to newly reallocated listpack return value. */
+//将列表包“first”和“second”合并到“first”。
+// 注意：较大的listpack被重新分配以包含新的合并listpack。
+// 结果可以使用“first”或“second”。
+// 未使用的参数将被释放并设置为NULL。
+// 调用此函数后，输入参数不再有效，因为它们已更改并释放到位。
+// 结果listpack是“first”后面跟着“second”的内容。
+// 失败时：如果无法合并，则返回NULL。
+// 成功时：返回合并的listpack（它是“first”或“second”的扩展版本），
+// 还释放其他未使用的输入listpack，并将输入listpack参数设置为新重新分配的listpack返回值。
 unsigned char *lpMerge(unsigned char **first, unsigned char **second) {
     /* If any params are null, we can't merge, so NULL. */
     if (first == NULL || *first == NULL || second == NULL || *second == NULL)
@@ -1171,6 +1202,12 @@ size_t lpBytes(unsigned char *lp) {
  * the tail, negative indexes specify elements starting from the tail, where
  * -1 means the last element, -2 the penultimate and so forth. If the index
  * is out of range, NULL is returned. */
+/**
+ * 在listpack中根据index返回元素指针
+ * @param lp
+ * @param index 正索引指定从头部到尾部从零开始搜索的元素，负索引指定从尾部开始搜索的元素，其中-1表示最后一个元素，-2表示倒数第二个元素，依此类推。如果索引超出范围，则返回NULL。
+ * @return
+ */
 unsigned char *lpSeek(unsigned char *lp, long index) {
     int forward = 1; /* Seek forward by default. */
 
@@ -1331,6 +1368,7 @@ int lpValidateIntegrity(unsigned char *lp, size_t size, int deep,
 
 /* Compare entry pointer to by 'p' with string 's' of length 'slen'.
  * Return 1 if equal. */
+//将“p”指向的条目指针与长度为“slen”的字符串“s”进行比较。如果相等，则返回1。
 unsigned int lpCompare(unsigned char *p, unsigned char *s, uint32_t slen) {
     unsigned char *value;
     int64_t sz;

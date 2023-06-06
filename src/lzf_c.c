@@ -104,6 +104,9 @@
  * 111ooooo LLLLLLLL oooooooo ; backref L+8 octets, o+1=1..4096 offset
  *
  */
+//in_data是需要压缩的数据
+//in_len需要压缩数据的长度
+//out_data压缩后存放的位置地址
 NO_SANITIZE("alignment")
 size_t
 lzf_compress (const void *const in_data, size_t in_len,

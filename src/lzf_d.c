@@ -57,6 +57,7 @@
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 #endif
 size_t
+//解压缩，in_data需要解压缩的数据，in_len需要解压缩的数据长度,out_data解压缩后存储的空间地址
 lzf_decompress (const void *const in_data,  size_t in_len,
                 void             *out_data, size_t out_len)
 {

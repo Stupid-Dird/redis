@@ -43,16 +43,33 @@
  * recompress: 1 bit, bool, true if node is temporary decompressed for usage.
  * attempted_compress: 1 bit, boolean, used for verifying during testing.
  * extra: 10 bits, free for future use; pads out the remainder of 32 bits */
+//节点、快速列表和迭代器是当前使用的唯一数据结构。quicklistNode是一个32字节的结构，
+// 用于描述quicklist的列表包。我们使用位字段将quicklistNode保持在32字节。
+// 计数：16位，最大65536（最大lp字节数为65k，所以最大计数实际上小于32k）。
+// 编码：2位，原始=1，LZF=2。容器：2位，普通=1，打包=2。重新压缩：1位，bool，
+// 如果节点临时解压缩以供使用，则为true。尝试压缩：1位，布尔值，用于测试期间的验证。
+// 额外：10位，未来免费使用；将32位的剩余部分进行填充
+//如果container=1，则表示是普通节点，则quicklistNode只能存储一个元素
 typedef struct quicklistNode {
+    //上一个节点
     struct quicklistNode *prev;
+    //下一个节点
     struct quicklistNode *next;
+    //指向实际节点数据，如果container=1，则entry只有一个元素
     unsigned char *entry;
+    //表示未压缩的空间大小
     size_t sz;             /* entry size in bytes */
+    // 节点中的元素个数
     unsigned int count : 16;     /* count of items in listpack */
+    //表示是否使用LZF压缩，1表示没有，2表示压缩
     unsigned int encoding : 2;   /* RAW==1 or LZF==2 */
+    //表示节点是否是ziplist，2表示ziplist保存
     unsigned int container : 2;  /* PLAIN==1 or PACKED==2 */
+    //1表示等待重新压缩
     unsigned int recompress : 1; /* was this node previous compressed? */
+    //测试时使用
     unsigned int attempted_compress : 1; /* node can't compress; too small */
+    //未使用，留着以后扩展
     unsigned int extra : 10; /* more bits to steal for future usage */
 } quicklistNode;
 
@@ -61,8 +78,11 @@ typedef struct quicklistNode {
  * 'compressed' is LZF data with total (compressed) length 'sz'
  * NOTE: uncompressed length is stored in quicklistNode->sz.
  * When quicklistNode->entry is compressed, node->entry points to a quicklistLZF */
+//存放节点元素列表的压缩包装体，压缩后关系为quicklist->entry->quicklistLZF
 typedef struct quicklistLZF {
+    //压缩后的长度，单位字节
     size_t sz; /* LZF size in bytes*/
+    //压缩后的数据
     char compressed[];
 } quicklistLZF;
 
@@ -74,6 +94,7 @@ typedef struct quicklistLZF {
  * deleted, some overhead remains (to avoid resonance).
  * The number of bookmarks used should be kept to minimum since it also adds
  * overhead on node deletion (searching for a bookmark to update). */
+//qln的书签，方便查找节点
 typedef struct quicklistBookmark {
     quicklistNode *node;
     char *name;
@@ -102,39 +123,72 @@ typedef struct quicklistBookmark {
  * 'fill' is the user-requested (or default) fill factor.
  * 'bookmarks are an optional feature that is used by realloc this struct,
  *      so that they don't consume memory when not used. */
+//quicklist是一个40字节的结构（在64位系统上），是一个双向链表
 typedef struct quicklist {
+    //头节点,每个节点也是一个列表
     quicklistNode *head;
+    //尾结点,每个节点也是一个列表
     quicklistNode *tail;
+    //所有节点中每个元素的和=所有quliklistNode中所有元素和
     unsigned long count;        /* total count of all entries in all listpacks */
+    //quicklistNodes节点数
     unsigned long len;          /* number of quicklistNodes */
+    //fill成员对应的配置：list-max-ziplist-size -2
+    //当数字为负数，表示以下含义：
+    //-1 每个quicklistNode节点的ziplist字节大小不能超过4kb。（建议）
+    //-2 每个quicklistNode节点的ziplist字节大小不能超过8kb。（默认配置）
+    //-3 每个quicklistNode节点的ziplist字节大小不能超过16kb。（一般不建议）
+    //-4 每个quicklistNode节点的ziplist字节大小不能超过32kb。（不建议）
+    //-5 每个quicklistNode节点的ziplist字节大小不能超过64kb。（正常工作量不建议）
     signed int fill : QL_FILL_BITS;       /* fill factor for individual nodes */
+    //如果已禁用压缩，则“compress”为：0，如果为1则表示首尾不压缩，如果为2则表示第一第二和倒数第一第二不压缩，以此类推
+    //默认为0
     unsigned int compress : QL_COMP_BITS; /* depth of end nodes not to compress;0=off */
+    //书签的最大长度，4位
     unsigned int bookmark_count: QL_BM_BITS;
+    //quicklist的书签，可以引用quicklist中的quicklistNode对象，同时指定节点名，通过书签集合，可以快速的到指定名字的节点位置
     quicklistBookmark bookmarks[];
 } quicklist;
 
+//元素迭代器
 typedef struct quicklistIter {
+    //quicklist指向迭代的列表
     quicklist *quicklist;
+    //当前的节点
     quicklistNode *current;
+    //指向当前元素数据
     unsigned char *zi;
+    //offset表示当前元素在节点中的偏移量
     long offset; /* offset in current listpack */
+    //direction表示方向
     int direction;
 } quicklistIter;
 
+//此结构体表示一个元素并且有足够的元数据
 typedef struct quicklistEntry {
+    //ql
     const quicklist *quicklist;
+    //qln节点
     quicklistNode *node;
+    //指向的元素数据
     unsigned char *zi;
+    //如果entry指向的是字符串，则value指向元素的字符串值
     unsigned char *value;
+    //如果entry指向的元素为整型值，则longval存储的元素整型值
     long long longval;
+    //如果entry指向的是字符串，则sz是指向字符串的长度
     size_t sz;
+    //offset表示指向元素在node中的偏移量
     int offset;
 } quicklistEntry;
 
+//从ql头部弹出元素
 #define QUICKLIST_HEAD 0
+//从ql尾部弹出元素
 #define QUICKLIST_TAIL -1
 
 /* quicklist node encodings */
+//qln的编码
 #define QUICKLIST_NODE_ENCODING_RAW 1
 #define QUICKLIST_NODE_ENCODING_LZF 2
 
@@ -144,7 +198,7 @@ typedef struct quicklistEntry {
 /* quicklist container formats */
 #define QUICKLIST_NODE_CONTAINER_PLAIN 1
 #define QUICKLIST_NODE_CONTAINER_PACKED 2
-
+//是普通节点，就不可能是数字了，只能是字符串
 #define QL_NODE_IS_PLAIN(node) ((node)->container == QUICKLIST_NODE_CONTAINER_PLAIN)
 
 #define quicklistNodeIsCompressed(node)                                        \
@@ -205,7 +259,9 @@ int quicklistTest(int argc, char *argv[], int flags);
 #endif
 
 /* Directions for iterators */
+//从头开始，用于迭代器
 #define AL_START_HEAD 0
+//从尾开始,用于迭代器
 #define AL_START_TAIL 1
 
 #endif /* __QUICKLIST_H__ */

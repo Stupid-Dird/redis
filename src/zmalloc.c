@@ -87,15 +87,21 @@ void zlibc_free(void *ptr) {
 #define dallocx(ptr,flags) je_dallocx(ptr,flags)
 #endif
 
+//将新使用的__n内存原子的更新到used_memory已使用的内存
 #define update_zmalloc_stat_alloc(__n) atomicIncr(used_memory,(__n))
+//将回收的__n内存原子的更新到used_memory已使用的内存
 #define update_zmalloc_stat_free(__n) atomicDecr(used_memory,(__n))
 
+//redis内存的总使用情况
 static redisAtomic size_t used_memory = 0;
 
+//redis默认的内存溢出处理，输出内存溢出日志，终止程序
 static void zmalloc_default_oom(size_t size) {
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
+    //刷写文件
     fflush(stderr);
+    //终止当前进程
     abort();
 }
 
@@ -103,14 +109,22 @@ static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
 /* Try allocating memory, and return NULL if failed.
  * '*usable' is set to the usable size if non NULL. */
+//尝试分配内存，如果失败，则返回NULL。
+// 如果分配成功，则将分配空间大小更新到redis总的空间使用大小字段中
+// 如果*usable不为空，则将“*usable”设置为可用大小。
 void *ztrymalloc_usable(size_t size, size_t *usable) {
     ASSERT_NO_SIZE_OVERFLOW(size);
+    //MALLOC_MIN_SIZE(size)判断size是否大于0，如果不大于0则为sizeof(long)；PREFIX_SIZE为(0)
+    //尝试分配size大小的空间
     void *ptr = malloc(MALLOC_MIN_SIZE(size)+PREFIX_SIZE);
-
+    //如果分配失败则返回NULL，
     if (!ptr) return NULL;
 #ifdef HAVE_MALLOC_SIZE
-    size = zmalloc_size(ptr);
+    //获取分配区域的大小
+    size = malloc_size(ptr);
+    //并将新分配的空间大小更新到，redis总使用空间大小used_memory中
     update_zmalloc_stat_alloc(size);
+    //如果*usable不为NULL则将分配的空间大小赋值给usable
     if (usable) *usable = size;
     return ptr;
 #else
@@ -122,8 +136,11 @@ void *ztrymalloc_usable(size_t size, size_t *usable) {
 }
 
 /* Allocate memory or panic */
+//分配size个字节空间，并维护到redis的总使用空间字段used_memory,如果分配失败则进入oom处理器
+//当内存，输出内存溢出日志，终止程序
 void *zmalloc(size_t size) {
     void *ptr = ztrymalloc_usable(size, NULL);
+    //当内存，输出内存溢出日志，终止程序
     if (!ptr) zmalloc_oom_handler(size);
     return ptr;
 }
@@ -136,6 +153,8 @@ void *ztrymalloc(size_t size) {
 
 /* Allocate memory or panic.
  * '*usable' is set to the usable size if non NULL. */
+//底层还是调用ztrymalloc_usable尝试分配内存，
+// 如果分配失败，则进入zmalloc_oom_handler内存溢出处理器
 void *zmalloc_usable(size_t size, size_t *usable) {
     void *ptr = ztrymalloc_usable(size, usable);
     if (!ptr) zmalloc_oom_handler(size);
@@ -203,6 +222,7 @@ void *zcalloc(size_t size) {
 }
 
 /* Try allocating memory, and return NULL if failed. */
+//尝试分配内存，如果失败，则返回NULL。
 void *ztrycalloc(size_t size) {
     void *ptr = ztrycalloc_usable(size, NULL);
     return ptr;
@@ -300,7 +320,7 @@ size_t zmalloc_usable_size(void *ptr) {
     return zmalloc_size(ptr)-PREFIX_SIZE;
 }
 #endif
-
+//释放空间，并维护redis的总使用空间,used_memory
 void zfree(void *ptr) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -338,6 +358,7 @@ void zfree_usable(void *ptr, size_t *usable) {
 #endif
 }
 
+//将s拷贝到新分配的空间
 char *zstrdup(const char *s) {
     size_t l = strlen(s)+1;
     char *p = zmalloc(l);

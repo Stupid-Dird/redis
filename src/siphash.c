@@ -57,6 +57,7 @@ int siptlw(int c) {
 
 #if defined(__has_attribute)
 #if __has_attribute(no_sanitize)
+//是gcc编译器支持的一个编译特性，禁用内存检查，用于通知编译器，当使用编译器编译时，不应在函数中检测内存访问-fsanitize = address 选项。
 #define NO_SANITIZE(sanitizer) __attribute__((no_sanitize(sanitizer)))
 #endif
 #endif

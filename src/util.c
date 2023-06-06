@@ -316,6 +316,7 @@ uint32_t sdigits10(int64_t v) {
 /* Convert a long long into a string. Returns the number of
  * characters needed to represent the number.
  * If the buffer is not big enough to store the string, 0 is returned. */
+//将size_t转字符串，返回转为字符串需要的空间长度，dst为转换后输出的位置，dstlen为空间大小
 int ll2string(char *dst, size_t dstlen, long long svalue) {
     unsigned long long value;
     int negative = 0;
